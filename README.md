@@ -1,4 +1,4 @@
-# CineMatch — Movie Recommendation System
+<!-- # CineMatch — Movie Recommendation System
 
 A content-based movie recommender (CountVectorizer + cosine similarity, built
 in your notebook) wrapped in a polished Streamlit app, with posters/details
@@ -60,6 +60,129 @@ the same edge cases apply there too.
 - Navigation between the home page and a movie's details page uses query-param
   links (`?movie_id=...`), so posters/titles are natively clickable without
   extra JavaScript.
+- All TMDB calls are cached (`@st.cache_data`, 24h TTL) and the dataset/matrix
+  load once per session, so reruns stay fast.
+- If TMDB is unreachable, rate-limited, or a poster/overview/cast field is
+  missing, the UI falls back to a clean placeholder instead of crashing. -->
+
+# CineMatch — Movie Recommendation System
+
+A content-based movie recommender I built using CountVectorizer and cosine
+similarity, wrapped in a polished Streamlit app with posters and details
+pulled live from the TMDB API.
+
+## Project structure
+
+```
+Movie-Recommendation-System/
+│
+├── app.py                  # Streamlit UI (home + details views)
+├── utils.py                # data loading, TMDB calls, recommend(), CSS
+├── movie_list.pkl          # generated from my notebook (movie_id, title, tags)
+├── similarity.pkl          # generated from my notebook (cosine similarity matrix)
+├── .env                    # my real TMDB_API_KEY (not committed)
+├── .env.example            # template — copy to .env
+├── requirements.txt
+└── Movie_Recommendation.ipynb   # the original preprocessing/modeling notebook
+```
+
+## Setup
+
+```bash
+pip install -r requirements.txt
+python -c "import nltk; nltk.download('punkt')"   # only needed if you rerun the notebook
+cp .env.example .env      # then paste your real TMDB key into .env
+streamlit run app.py
+```
+
+Get a free TMDB API key at https://www.themoviedb.org/settings/api — the
+"API Key (v3 auth)" value is what goes in `.env`.
+
+Make sure `movie_list.pkl` and `similarity.pkl` (produced by the last cell of
+the notebook) sit in the same folder as `app.py`.
+
+## NLP workflow
+
+The recommendation engine is a content-based system built entirely on the
+text describing each movie — no user ratings or collaborative signal
+involved. The pipeline:
+
+1. **Feature selection** — From the merged TMDB movies + credits data, I
+   kept only the fields that actually carry semantic signal for
+   "similar movie" judgments: `overview`, `genres`, `keywords`, `cast`,
+   `crew`, and `production_companies`. Purely numeric or identifier columns
+   (budget, revenue, runtime, popularity, vote counts) were dropped since
+   they don't contribute to content similarity.
+
+2. **Structured field parsing** — `genres`, `keywords`, and
+   `production_companies` arrive as stringified JSON lists (e.g.
+   `'[{"id": 28, "name": "Action"}, ...]'`). I parsed these with
+   `ast.literal_eval` and extracted just the `name` field into plain lists.
+   For `cast`, I kept only the top 3 billed actors per movie — deeper cast
+   members add noise rather than signal for similarity. For `crew`, I
+   filtered down to the `Director` specifically, since director is a much
+   stronger similarity signal than the full crew list.
+
+3. **Token normalization** — Multi-word entities like actor names or genres
+   (`"Science Fiction"`, `"Tom Hardy"`) get their internal spaces stripped
+   (`"ScienceFiction"`, `"TomHardy"`). This is deliberate: without it,
+   CountVectorizer would tokenize `"Tom"` and `"Hardy"` separately, causing
+   false similarity between unrelated movies that merely share a common
+   first or last name.
+
+4. **Tag construction** — `overview` (tokenized), `genres`, `keywords`,
+   `cast`, `crew`, and `production_companies` are concatenated into a single
+   `tags` list per movie, then joined into one lowercase string. This
+   collapses each movie down to a single "bag of concepts" document.
+
+5. **Stemming** — Applied the Porter Stemmer (NLTK) to every token in
+   `tags`, reducing inflected forms to their root (`loving`, `loved` →
+   `love`). This lets semantically identical words collapse to the same
+   vocabulary entry instead of being treated as distinct features.
+
+6. **Vectorization** — Used `CountVectorizer(max_features=5000,
+stop_words='english')` to build a bag-of-words representation, capping
+   the vocabulary at the 5000 most frequent terms and discarding English
+   stop words that carry no discriminative meaning. Each movie becomes a
+   5000-dimensional sparse vector of token counts.
+
+7. **Similarity computation** — Computed pairwise `cosine_similarity` across
+   all movie vectors. Cosine distance was chosen over Euclidean because it
+   measures the angle between vectors rather than magnitude, which is the
+   right notion of "closeness" in high-dimensional, sparse text vector
+   spaces (and avoids the curse-of-dimensionality issues Euclidean distance
+   runs into there).
+
+8. **Recommendation lookup** — For a given movie, its row in the similarity
+   matrix is sorted in descending order and the top 5 entries (excluding the
+   movie itself) are returned as the recommendations.
+
+## How the app maps to the notebook
+
+- `new_df` (columns `movie_id`, `title`, `tags`) is loaded straight from
+  `movie_list.pkl` — no columns were renamed or restructured.
+- `get_recommendations()` in `utils.py` is my `recommend()` function,
+  unchanged in logic (same index lookup → sort similarity row → take
+  `[1:6]`), just returning data instead of `print()`-ing it, and returning
+  `[]` instead of raising `IndexError` when a title isn't found.
+- `movie_id` (the original TMDB id kept in the dataframe) is what's used to
+  call the TMDB API for posters, overview, cast, and crew — nothing extra
+  needed from the notebook for that to work.
+
+## One thing worth fixing in the notebook
+
+`recommend()` does `new_df[new_df['title'] == movie].index[0]`, which throws
+an `IndexError` if the title isn't found, and silently picks the first match
+if two movies share a title. The app already guards against both cases
+(returns no recommendations instead of crashing, and uses the first match),
+so I didn't need to change the notebook — but if I rerun it standalone, the
+same edge cases still apply there.
+
+## Notes
+
+- Navigation between the home page and a movie's details page uses
+  query-param links (`?movie_id=...`), so posters/titles are natively
+  clickable without extra JavaScript.
 - All TMDB calls are cached (`@st.cache_data`, 24h TTL) and the dataset/matrix
   load once per session, so reruns stay fast.
 - If TMDB is unreachable, rate-limited, or a poster/overview/cast field is
