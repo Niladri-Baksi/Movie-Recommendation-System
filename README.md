@@ -1,5 +1,8 @@
 <!-- # CineMatch — Movie Recommendation System
-Deployed at : https://cinematch-nbk.streamlit.app/
+
+[CineMatch — Try it live](https://cinematch-nbk.streamlit.app/)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://cinematch-nbk.streamlit.app/)
+
 A content-based movie recommender (CountVectorizer + cosine similarity, built
 in your notebook) wrapped in a polished Streamlit app, with posters/details
 pulled live from TMDB.
