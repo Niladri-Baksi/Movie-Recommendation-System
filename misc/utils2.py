@@ -21,22 +21,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
-def _resolve_tmdb_key():
-    """Checks the local .env / environment first (for local dev), then
-    falls back to Streamlit Cloud's Secrets store (for deployment)."""
-    key = os.getenv("TMDB_API_KEY")
-    if key:
-        return key
-    try:
-        return st.secrets.get("TMDB_API_KEY")
-    except Exception:
-        # st.secrets raises if no secrets.toml/Cloud secrets exist at all
-        # (e.g. running locally with no secrets configured) -- that's fine.
-        return None
-
-
-TMDB_API_KEY = _resolve_tmdb_key()
+TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 
@@ -58,79 +43,22 @@ PLACEHOLDER_POSTER = "data:image/svg+xml;base64," + base64.b64encode(
 
 
 # ---------------------------------------------------------------------------
-# Fill these in once you've uploaded movie_list.pkl / similarity.pkl as
-# GitHub Release assets (Settings > Releases > your repo > asset URL).
-# Leave blank if you're committing the pkl files directly instead -- in
-# that case this download step is simply skipped.
-# ---------------------------------------------------------------------------
-MOVIE_LIST_URL = ""   # e.g. "https://github.com/<you>/<repo>/releases/download/<tag>/movie_list.pkl"
-SIMILARITY_URL = ""   # e.g. "https://github.com/<you>/<repo>/releases/download/<tag>/similarity.pkl"
-
-
-def _ensure_file(path: str, url: str):
-    """Downloads `path` from `url` if it doesn't already exist locally.
-    No-ops if the file is already present (e.g. local dev) or no url is set."""
-    if os.path.exists(path) or not url:
-        return
-    with st.spinner(f"Downloading {path} (first run only)\u2026"):
-        response = requests.get(url, timeout=60)
-        response.raise_for_status()
-        with open(path, "wb") as f:
-            f.write(response.content)
-
-
-# ---------------------------------------------------------------------------
 # Data loading (cached so the pickle files are only read once per session)
 # ---------------------------------------------------------------------------
-
-# st.cache_data:
-# Caches data and returns a separate copy, making it safer for
-# mutable objects like DataFrames.
-
-# @st.cache_data(show_spinner=False)
-# def load_movie_data():
-#     """
-#     Loads the preprocessed movie dataframe and cosine similarity matrix
-#     produced by the project notebook.
-#     """
-#     try:
-#         movies = pickle.load(open("movie_list.pkl", "rb"))
-#         similarity = pickle.load(open("similarity.pkl", "rb"))
-#     except FileNotFoundError:
-#         st.error(
-#             "Couldn't find `movie_list.pkl` / `similarity.pkl` in the app folder. "
-#             "Run the project notebook first (through the final pickle.dump cell) "
-#             "and place the two files alongside `app.py`."
-#         )
-#         st.stop()
-
-#     # Defensive: make sure the dataframe has a clean contiguous index so it
-#     # stays aligned with the similarity matrix's row/column positions.
-#     movies = movies.reset_index(drop=True)
-#     return movies, similarity
-
-# st.cache_resource:
-# Returns the same shared object to all users, saving memory.
-# Best for large resources that are only read and never modified.
-@st.cache_resource(show_spinner=False)
+@st.cache_data(show_spinner=False)
 def load_movie_data():
     """
     Loads the preprocessed movie dataframe and cosine similarity matrix
-    produced by the project notebook. If the files aren't found locally
-    (e.g. a fresh Streamlit Cloud container), fetches them once from the
-    configured Release URLs and caches them to disk.
+    produced by the project notebook.
     """
-    _ensure_file("movie_list.pkl", MOVIE_LIST_URL)
-    _ensure_file("similarity.pkl", SIMILARITY_URL)
-
     try:
         movies = pickle.load(open("movie_list.pkl", "rb"))
         similarity = pickle.load(open("similarity.pkl", "rb"))
     except FileNotFoundError:
         st.error(
-            "Couldn't find `movie_list.pkl` / `similarity.pkl` in the app folder, "
-            "and no download URL is configured. Either place the two files "
-            "alongside `app.py`, or set MOVIE_LIST_URL / SIMILARITY_URL in utils.py."
+            "Couldn't find `movie_list.pkl` / `similarity.pkl` in the app folder. "
+            "Run the project notebook first (through the final pickle.dump cell) "
+            "and place the two files alongside `app.py`."
         )
         st.stop()
 

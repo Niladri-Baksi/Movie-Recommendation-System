@@ -23,5 +23,5 @@ logs/
 *.csv
 *.xls
 *.xlsx
-*.pkl
+
 *.db
